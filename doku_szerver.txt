@@ -1,0 +1,30 @@
+192.168.99.0 /24 halozat
+domain: sbrokers.zrt
+
+router:	mikortik	 	ip: 192.168.99.1
+
+server:	dc/ad/dhcp/dns: linux	ip: 192.168.99.254
+
+server:	sdc/dhcp_failover	ip:192.168.99.252
+
+server: ftp/file/web		ip: 192.168.99.253
+
+kliens: win10			ip:dhcp
+
+server: mail/print		ip:192.168.99.250
+
+
+
+
+GPO:
+minden kliensenk:(kiveve IT osztaly)
+firefox (tavtelep)
+minden usb port letiltva
+task menegert nem lehet elinidtani
+cmd-t nem lehet elinidtani
+automatikus win. update
+bejelntkezeskor induljon el: thunderbird
+control panelt nem lehet megynitni
+user semmit nem tud letolteni
+Guest account levan tiltva
+jelszo minimum 6karakter es 1 specialis
