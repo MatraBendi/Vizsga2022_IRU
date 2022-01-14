@@ -13,12 +13,13 @@ kliens: win10			ip:dhcp
 
 server: mail/print		ip:192.168.99.250
 
-
+Mentes 9.00 és 17.00 kozott fel orankent
 
 
 GPO:
 minden kliensenk:(kiveve IT osztaly)
 firefox (tavtelep)
+hatter egyseges
 minden usb port letiltva
 task menegert nem lehet elinidtani
 cmd-t nem lehet elinidtani
