@@ -1,9 +1,0 @@
-05_telepites
-____________
-
-Mikrotik router
-Linux Server | Domain Controller | Active Directory | DNS | DHCP
-Linux Server | Secondary Domain Controller | DHCP Failover
-Windows Server GUI | Webserver | FTP Server | Fileserver | Backup server
-Linux Server | MySQL
-Windows 10 (kliens)
