@@ -1,0 +1,259 @@
+Debian Server | SDC | DHCP Failover
+___________________________________
+
+
+
+1. A Server VirtualBox beállításai:
+
+Debian netinst verzió (A telepítéshez rendelkeznünk kell internet kapcsolattal!)
+
+- Bridge kártya
+- 20GB merevlemez
+
+Telepítés beállításai:
+
+- Install
+- Language: English
+- Country, territory or area: United Kingdom
+- Keymap to use: Hungarian
+- Hostname: debiansdc
+- Domain name: dual.suli
+- Root password: Aa123456
+- Full name for the new user: DebianSDCAdmin
+- Username for your account: debiansdcadmin
+- Choose a password for the new user: Bb123456
+- Partitioning method: Manual: 15.5GB -> (ext4) + 6GB -> (swap)
+
+Configure the package manager
+
+- Scan another CD or DVD? -> NO
+- Debian archive mirror country -> United Kingdom
+- Debian archive mirror: deb.debian.org/ftp.uk.debian.org
+- Proxy Server: nincs
+
+Configuring popularity-contest -> NO
+
+
+Telepítés összetevõi:
+
+- SSH server
+- standard system utilities
+
+GRUB MBR-ba telepítése -> /dev/sda
+
+
+2. Interfaces -> static
+
+nano /etc/network/interfaces 
+
+DHCP-rõl static-ra állítani!
+
+address 172.16.0.252
+netmask 255.255.0.0
+network 172.16.0.0
+broadcast 172.16.255.255
+gateway 172.16.0.1
+dns-nameservers 172.16.0.254
+dns-search dual.suli
+
+
+3. Hosts
+
+nano /etc/hosts
+
+127.0.0.1 localhost
+172.16.0.252 debiansdc.dual.suli debiansdc
+
+
+4. Hostname beállítása:
+
+nano /etc/hostname
+
+debiansdc
+
+
+5. Állítsuk le a virtuális gépet!
+
+
+A Debian SDC szervert leállítani és a hálókártyát konfigurálni:
+
+1. kártya -> Belsõ hálózat
+
+Indítsuk újra a Debian SDC-t.
+
+Putty-val a Mikrotik-ben kapott DHCP címmel csatlakozzunk SSH-n keresztül a Debian serverhez.
+
+_______________
+
+Sudo beállítása:
+
+A sudo egy olyan alkalmazás a Unix-szerû operációs rendszert futtató számítógépeken, amely lehetõvé teszi egy felhasználó számára, hogy egy másik felhasználó (általában a superuser, vagy a root) biztonsági jogosultságaival futtasson programokat. A sudo név az su parancs és a „do” angol szó összevonásának eredménye. Míg az su parancsnál a felhasználók a root jelszót adják meg, a sudo parancsnál a saját jelszavukat.
+
+
+Konfigurálás:
+
+Váltsunk root felhasználóra:
+
+su -
+
+Telepítsük a sudo-t és adjuk hozzá a debiansdcadmin felhasználót a sudo csoporthoz:
+
+apt-get install sudo
+usermod -aG sudo debiansdcadmin
+getent group sudo
+
+A konfigurált, emelt joggal rendelkezõ felhasználóra való váltás (jelenleg csak a példa kedvéért):
+
+su - debiansdcadmin
+
+A superuser vagy root biztonsági jogosultságaival való parancs futtatásához a parancs elé tegyünk sudo-t. Az adott felhasználó jelszavának beírása után megkapjuk a megfelelõ jogosultságot. Az /etc/sudoers fájlban határozhatjuk meg, hogy milyen parancsok végrehajtása engedélyezett a sudo-val.
+_______________
+
+
+Maradjunk a root felhasználónál a telepítés további folytatásához!
+
+
+6. Fájlrendszer paraméterek
+
+- Kiterjesztett felhasználói attribútumok (user_xattr)
+- Hozzáférési lista (acl)
+- Ha a bármilyen hiba fordul elõ, és újramountolja a diszket az read only lesz (errors=remount-ro)
+
+
+nano /etc/fstab
+
+UUID=xyzxyzxy-xyzx-xyzx-xyzx-xyzxyzxyzxyzxy    /   ext4 user_xattr,acl,errors=remount-ro     0     1
+
+
+Mentés, bezárás!
+
+reboot
+
+
+Ha elgépelted az fstab paramétereit és írásvédetté válik a fájlrendszer, a következõ a teendõ:
+
+lsblk (megkeresni a partíció azonosítóját)
+mount -o remount,rw /dev/sda1 / (az sda1 az azonosító)
+Be kell lépni újra az fstab fájlba, és javítani a hibát! -> Mentés, bezárás!
+
+reboot
+
+
+7. Nyissuk meg a /etc/resolv.conf fájlt, és a következõkre cseréljük a tartalmát:
+
+nano /etc/resolv.conf
+
+domain dual.suli
+search dual.suli
+nameserver 172.16.0.254
+nameserver 8.8.8.8
+
+
+8. Léptessük be a servert a debiansambaad server tartományába:
+
+apt install winbind libpam-winbind libnss-winbind krb5-config samba acl ntp krb5-user ntpdate -y
+
+service ntp stop
+
+nano /etc/ntp.conf
+
+Keressük meg ezt a sort:
+
+#server ntp.your-provider.example
+
+Cseréljük erre:
+
+server 172.16.0.254
+
+Mentés, bezárás!
+
+
+ntpdate 172.16.0.254
+service ntp start
+timedatectl set-timezone Europe/Budapest
+date
+
+mv /etc/samba/smb.conf /etc/samba/smb.conf.orig
+samba-tool domain join dual.suli DC -U"DUAL\administrator" --option='idmap_ldb:use rfc2307 = yes'
+ln -sf /var/lib/samba/private/krb5.conf /etc/krb5.conf
+
+nano /etc/samba/smb.conf
+
+A [global] rész utolsó sora után illesszük be:
+
+dns forwarder = 8.8.8.8
+
+Mentés, bezárás!
+
+
+systemctl stop smbd nmbd winbind
+systemctl disable smbd nmbd winbind
+systemctl unmask samba-ad-dc
+systemctl start samba-ad-dc
+systemctl enable samba-ad-dc
+
+
+9. DHCP telepítése/beállítása
+
+apt-get install isc-dhcp-server -y
+systemctl stop isc-dhcp-server
+
+mv /etc/dhcp/dhcpd.conf /etc/dhcp/dhcpd.conf.orig
+nano -w /etc/dhcp/dhcpd.conf
+
+Példa:
+
+authoritative;
+ddns-update-style none;
+failover peer "dhcp-failover" {
+  secondary;
+  address 172.16.0.252;
+  port 647;
+  peer address 172.16.0.254;
+  peer port 847;
+  max-response-delay 30;
+  max-unacked-updates 10;
+  load balance max seconds 3;
+}
+
+subnet 172.16.0.0 netmask 255.255.0.0 {
+  option subnet-mask 255.255.0.0;
+  option broadcast-address 172.16.255.255;
+  option routers 172.16.0.1;
+  option domain-name-servers 172.16.0.254, 172.16.0.252;
+  option domain-name "debiansdc.dual.suli";
+  pool {
+    deny dynamic bootp clients;
+    failover peer "dhcp-failover";
+    default-lease-time 43200;
+    max-lease-time 43200;
+    range 172.16.0.100 172.16.0.150;
+  }
+}
+
+
+Mentés, bezárás!
+
+
+Nyissuk meg a következõ fájlt és egészítsük ki a következõképpen:
+
+nano /etc/default/isc-dhcp-server
+
+INTERFACESV4="enp0s3" (meg kell adni a hálózati kártya azonosítóját)
+
+Mentés, bezárás!
+
+systemctl start isc-dhcp-server
+
+reboot
+
+
+10. Miután újraindult a SDC szerver, indítsuk újra a fõ tartományvezérlõt is!
+
+
+Térjünk vissza a "linux_dc_ad_dns_dhcp.txt" fájlhoz és a "Windows 10 kliens telepítése" ponttól folytatjuk a telepítést!
+
+
+11. DNS tesztelése (miután a DNS beállítások megtörténtek a fõ tartományvezérlõn):
+
+samba-tool dns query localhost dual.suli @ ALL -U administrator

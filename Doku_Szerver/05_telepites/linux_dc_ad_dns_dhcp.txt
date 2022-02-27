@@ -1,0 +1,430 @@
+Debian Server | Samba AD DC | DHCP | DNS
+________________________________________
+
+
+
+1. Mikrotik konfigurálása
+
+Hálózati kártyák: 1. kártya: Bridge kártya | 2. kártya: Belsõ hálózat
+
+Ha a Mikrotik router kéri az új jelszó beállítást -> jelszó: Aa123456
+
+
+ip dhcp-client add disabled=no interface=ether1
+
+(ethernet1 interfészre DHCP-tõl IP, hogy legyen internet) -> Bridge kártya
+
+ip address add interface=ether2 address=172.16.0.1/16
+
+(ethernet2 interfészre belsõ hálózati IP) -> Belsõ hálózat
+
+ip address print
+
+(IP-k listázása)
+
+ip firewall nat add chain=srcnat out-interface=ether1 action=masquerade
+
+(Internet megosztás)
+
+ip firewall nat add action=dst-nat chain=dstnat dst-port=50000 in-interface=ether1 protocol=tcp to-addresses=172.16.0.253 to-ports=3389
+
+(Távoli asztal kapcsolat)
+
+ip firewall nat add chain=dstnat disabled=no dst-port=22 protocol=tcp action=dst-nat to-addresses=172.16.0.254 to-ports=22
+
+(SSH engedélyezése)
+
+
+A Server VirtualBox beállításai:
+
+Debian netinst verzió (A telepítéshez rendelkeznünk kell internet kapcsolattal!)
+
+- Bridge kártya
+- 20GB merevlemez
+
+Telepítés beállításai:
+
+- Install
+- Language: English
+- Country, territory or area: United Kingdom
+- Keymap to use: Hungarian
+- Hostname: debiansambaad
+- Domain name: dual.suli
+- Root password: Aa123456
+- Full name for the new user: DebianSambaADAdmin
+- Username for your account: debiansambaadadmin
+- Choose a password for the new user: Bb123456
+- Partitioning method: Manual: 15.5GB -> (ext4) + 6GB -> (swap)
+
+Configure the package manager
+
+- Scan another CD or DVD? -> NO
+- Debian archive mirror country -> United Kingdom
+- Debian archive mirror: deb.debian.org/ftp.uk.debian.org
+- Proxy Server: nincs
+
+Configuring popularity-contest -> NO
+
+
+Telepítés összetevõi:
+
+- SSH server
+- standard system utilities
+
+GRUB MBR-ba telepítése -> /dev/sda
+
+
+2. Interfaces -> static
+
+nano /etc/network/interfaces 
+
+DHCP-rõl static-ra állítani!
+
+address 172.16.0.254
+netmask 255.255.0.0
+network 172.16.0.0
+broadcast 172.16.255.255
+gateway 172.16.0.1
+dns-nameservers 172.16.0.254 8.8.8.8
+dns-search dual.suli
+
+
+3. Hosts
+
+nano /etc/hosts
+
+127.0.0.1 localhost
+172.16.0.254 debiansambaad.dual.suli debiansambaad
+
+
+4. Hostname beállítása
+
+nano /etc/hostname
+
+debiansambaad
+
+
+A Debian servert leállítani és a hálókártyát konfigurálni:
+
+1. kártya -> Belsõ hálózat
+
+Indítsuk újra a Debian-t.
+
+Putty-val a Mikrotik-ben kapott DHCP címmel csatlakozzunk SSH-n keresztül a Debian serverhez.
+
+_______________
+
+Sudo beállítása:
+
+A sudo egy olyan alkalmazás a Unix-szerû operációs rendszert futtató számítógépeken, amely lehetõvé teszi egy felhasználó számára, hogy egy másik felhasználó (általában a superuser, vagy a root) biztonsági jogosultságaival futtasson programokat. A sudo név az su parancs és a „do” angol szó összevonásának eredménye. Míg az su parancsnál a felhasználók a root jelszót adják meg, a sudo parancsnál a saját jelszavukat.
+
+
+Konfigurálás:
+
+Váltsunk root felhasználóra:
+
+su -
+
+Telepítsük a sudo-t és adjuk hozzá a debiansambaadadmin felhasználót a sudo csoporthoz:
+
+apt-get install sudo
+usermod -aG sudo debiansambaadadmin
+getent group sudo
+
+A konfigurált, emelt joggal rendelkezõ felhasználóra való váltás (jelenleg csak a példa kedvéért):
+
+su - debiansambaadadmin
+
+A superuser vagy root biztonsági jogosultságaival való parancs futtatásához a parancs elé tegyünk sudo-t. Az adott felhasználó jelszavának beírása után megkapjuk a megfelelõ jogosultságot. Az /etc/sudoers fájlban határozhatjuk meg, hogy milyen parancsok végrehajtása engedélyezett a sudo-val.
+_______________
+
+
+Maradjunk a root felhasználónál a telepítés további folytatásához!
+
+
+5. Fájlrendszer paraméterek
+
+- Kiterjesztett felhasználói attribútumok (user_xattr)
+- Hozzáférési lista (acl)
+- Ha a bármilyen hiba fordul elõ, és újramountolja a diszket az read only lesz (errors=remount-ro)
+
+
+nano /etc/fstab
+
+UUID=xyzxyzxy-xyzx-xyzx-xyzx-xyzxyzxyzxyzxy    /   ext4 user_xattr,acl,errors=remount-ro     0     1
+
+
+Mentés, bezárás!
+
+reboot
+
+
+Ha elgépelted az fstab paramétereit és írásvédetté válik a fájlrendszer, a következõ a teendõ:
+
+lsblk (megkeresni a partíció azonosítóját)
+mount -o remount,rw /dev/sda1 / (az sda1 az azonosító) -> Mentés, bezárás!
+Be kell lépni újra az fstab fájlba, és javítani a hibát!
+
+reboot
+
+
+6. NTP beállítása
+
+Network Time Protocol (szerveridõ szinkronizálása)
+
+apt-get install ntp ntpdate -y
+service ntp stop
+ntpdate -B 0.hu.pool.ntp.org
+service ntp start
+timedatectl set-timezone Europe/Budapest
+date
+
+
+7. Samba telepítése (kiegészítõ csomagokkal)
+
+
+apt install samba attr winbind krb5-config krb5-user smbclient libpam-winbind libnss-winbind libpam-krb5 -y
+
+A telepítõ kérdéseket fog feltenni:
+
+Realm=DUAL.SULI (nagybetûkkel)
+Kerberos server for your realm=debiansambaad (kisbetûkkel)
+Administrative server for your kerberos realm=debiansambaad (kisbetûkkel)
+
+
+8. A Samba konfigurálása elõtt állítsuk/tiltsuk le a háttérben futó Samba alkalmazásokat (daemon-okat)
+
+
+systemctl stop samba-ad-dc.service smbd.service nmbd.service winbind.service
+systemctl disable samba-ad-dc.service smbd.service nmbd.service winbind.service
+
+
+9. Nevezzük át vagy távolítsuk el a samba eredeti konfigurációját
+
+mv /etc/samba/smb.conf /etc/samba/smb.conf.orig
+
+
+10. Telepítsük a tartományi szolgáltatást interaktív módon
+
+samba-tool domain provision --use-rfc2307 --interactive
+
+(entereket kell nyomni, a DNS forwardert kell beírni)
+
+Realm [DUAL.SULI]:
+Domain [DUAL]:
+Server Role [dc]:
+DNS backend: [SAMBA_INTERNAL]:
+DNS forwarder IP address [8.8.8.8]: 8.8.8.8
+Administrator password: Aa123456
+
+
+--use-rfc2307 (Engedélyezi a NIS (Network Information Service) kiterjesztések használatát.)
+
+--interactive (Ez a paraméter kényszeríti a szolgáltatási szkript interaktív futtatását.)
+
+
+11. Nevezzük át, vagy távolítsuk el a Kerberos fõ konfigurációs fájlját a /etc könyvtárból, majd linkeljük a /var/lib/samba/private mappában lévõ Kerberos fájlt
+
+krb5.conf biztonsági mentése:
+
+mv /etc/krb5.conf /etc/krb5.conf.orig
+
+Linkeljük a Samba által létrehozott Kerberos fájlt az elõzõ helyre:
+
+ln -sf /var/lib/samba/private/krb5.conf /etc/krb5.conf
+
+
+12. Nyissuk meg a /etc/resolv.conf fájlt, és a következõkre cseréljük a tartalmát
+
+nano /etc/resolv.conf
+
+domain dual.suli
+search dual.suli
+nameserver 172.16.0.254
+nameserver 8.8.8.8
+
+
+13. Indítsuk el a Samba szolgáltatásokat
+
+systemctl unmask samba-ad-dc.service
+systemctl start samba-ad-dc.service
+systemctl enable samba-ad-dc.service
+
+
+14. DHCP telepítése/beállítása
+
+apt-get install isc-dhcp-server -y
+systemctl stop isc-dhcp-server
+
+mv /etc/dhcp/dhcpd.conf /etc/dhcp/dhcpd.conf.orig
+nano -w /etc/dhcp/dhcpd.conf
+
+Példa:
+
+authoritative;
+ddns-update-style none;
+failover peer "dhcp-failover" {
+  primary;
+  address 172.16.0.254;
+  port 847;
+  peer address 172.16.0.252;
+  peer port 647;
+  max-response-delay 30;
+  max-unacked-updates 10;
+  load balance max seconds 3;
+  mclt 1800;
+  split 256;
+}
+
+subnet 172.16.0.0 netmask 255.255.0.0 {
+  option subnet-mask 255.255.0.0;
+  option broadcast-address 172.16.255.255;
+  option routers 172.16.0.1;
+  option domain-name-servers 172.16.0.254, 172.16.0.252;
+  option domain-name "debiansambaad.dual.suli";
+  pool {
+    deny dynamic bootp clients;
+    failover peer "dhcp-failover";
+    default-lease-time 43200;
+    max-lease-time 43200;
+    range 172.16.0.100 172.16.0.150;
+  }
+}
+
+
+##############
+
+DHCP Failover nélküli szerver telepítése esetén:
+
+Példa:
+
+default-lease-time 43200;
+max-lease-time 43200;
+option subnet-mask 255.255.0.0;
+option broadcast-address 172.16.255.255;
+option routers 172.16.0.1;
+option domain-name-servers 172.16.0.254;
+option domain-name "debiansambaad.dual.suli";
+subnet 172.16.0.0 netmask 255.255.0.0 {
+   range 172.16.0.100 172.16.0.150;
+}
+
+##############
+
+
+MCLT (Maximum Client Lead Time) - Megadja azt az idõtartamot, ameddig a DHCP-bérleti idõt bármelyik feladatátvételi partner megújíthatja anélkül, hogy kapcsolatba lépne a másikkal.
+
+Split - terhelésmegosztás - 0 és 256 közötti érték lehet. A 128 pl. azt jelenti, hogy 50-50% a terhelésmegosztás. Ha 256-ra állítjuk, akkor minden DHCP kérést a primary szerver fogad, a secondary szerver csak abban az esetben fogadja a kéréseket, ha a primary elérhetetlen.
+
+max-response-delay - Másodpercben adja meg, hogy a szerver meddig vár, amíg sikertelennek nyílvánítja a kapcsolatot.
+
+
+Mentés, bezárás!
+
+
+Nyissuk meg a következõ fájlt és egészítsük ki a következõképpen:
+
+nano /etc/default/isc-dhcp-server
+
+INTERFACESV4="enp0s3" (meg kell adni a hálózati kártya azonosítóját)
+
+Mentés, bezárás!
+
+
+Újraindítjuk a DHCP szolgáltatást:
+
+systemctl start isc-dhcp-server
+
+
+Telepítsük a Linux | Secondary Domain Controller/DHCP Failover szervert -> linux_sdc_dhcp_failover.txt
+______________________________________________________________________________________________________
+
+Windows 10 kliens telepítése
+____________________________
+
+
+A kliens VirtualBox beállításai:
+
+Windows 10 | 90 napos TRIAL verzió (ISO fájl)
+
+- Belsõ hálózat kártya
+- 50GB merevlemez
+
+A telepítõ beállításai:
+
+Language to install: English (United Kingdom)
+Time and currency format: Hungarian (Hungary)
+Keyboard or input method: Hungarian
+
+Egyéni telepítést válasszunk!
+
+Az 50GB-os meghajtót partícionáljuk, majd a nagyobb méretû partícióra kattintva indítsuk el a telepítést.
+
+Felhasználónév: winadmin
+Jelszó: Aa123456
+
+A kliens gépet léptessük tartományba, a gép neve win10x64eng legyen!
+
+Újraindítás után tartományi rendszergazdaként lépünk be!
+
+Felhasználónév: dual\administrator
+Jelszó: Aa123456
+
+Telepítsük a Windows 10 kliensre a(z) RSAT (Remote Server Administration Tools) csomagot:
+
+Start menü -> jobb klikk -> Apps and Features -> Optional features -> Add a feature -> a keresõbe: rsat -> jelöljük ki az összes összetevõt -> install
+
+
+Telepítés után az alábbi helyen találjuk az egyes szolgáltatásokat/szerepköröket:
+
+Control Panel -> Administrative Tools -> Active Directory - Users and Computers
+Control Panel -> Administrative Tools -> DHCP
+Control Panel -> Administrative Tools -> DNS
+Control Panel -> Administrative Tools -> Group Policy Management
+Control Panel -> Administrative Tools -> Computer Management
+
+
+15. DNS nevek beállítása
+
+Control Panel -> Administrative Tools -> DNS
+
+Connect to DNS Server
+
+The Windows DNS Server is running on:
+The following computer -> 172.16.0.254
+
+
+Reverse Lookup Zones:
+
+debiansambaad.dual.suli -> 172.16.0.254
+server2016iis.dual.suli -> 172.16.0.253
+debiansdc.dual.suli -> 172.16.0.252
+debianmysql -> 172.16.0.251
+debianmail.dual.suli -> 172.16.0.250
+
+Forward Lookup Zones:
+
+web.dual.suli -> 172.16.0.253
+ftp.dual.suli -> 172.16.0.253
+debianmail.dual.suli -> 172.16.0.250
+
+
+16. Felhasználók felvétele
+
+Control Panel -> Administrative Tools -> Active Directory - Users and Computers
+
+Szervezeti felépítés:
+
+Hozzunk létre az alábbi szervezeti egységeket. Vegyünk fel felhasználókat, csoportokat. A felhasználókat tegyük bele a megfelelõ csoportba!
+
+xyceg
+	ugyvezeto_igazgato (1 fõ) 
+	gazdasagi_osztaly (1 fõ)
+	hr_osztaly (2 fõ)
+	marketing_osztaly (2 fõ) 
+	titkarsag (1 fõ) 
+	programozok (3 fõ)
+	ftp_users (joomlaftpuser)
+	
+
+Telepítsük a Windows Server GUI | Web/FTP/Fileserver-t -> winserver_gui_web_ftp_fileserver.pdf
