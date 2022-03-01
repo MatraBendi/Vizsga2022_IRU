@@ -1,0 +1,43 @@
+INTRO:
+
+ A South Brokers Zrt. egy újonnan alapított befektetési vállalat. A cég informatikai rendszerüzemeltetési részlege kapta meg a feladatot, hogy tervezze meg a cég teljes hálózati és üzemeltetési infrastruktújánák prototípusát. Ezt a feladatot nekem, Haraszti Gyulának, és kollegáimnak Mátravölgyi Bendegúznak és Kassai Lászlónak kellett kiviteleznie. A következő pár percben virtualizációs szoftverek segítségével prezentáljuk és teszteljük a prototípus legfontosabb részeit, köztük a hálózat topológiáját és működését, a használt protokollokat, illetve a szerverkörnyezetben alkalmazott üzemeltetési és biztonsági technológiákat.
+
+1. Topológia - packet tracer - a területek szerepeinek magyarázata, a használt protokollok gyorstalpalója (mi a feladata, miért ezt használjuk), a működés tesztelése pinggel és egyéb lekérdező commandokkal, snippetekkel
+
+Laci: Üdvözlök mindenkit, én a Cisco Packet Tracerben fogom bemutatni a hálózati topológiát és az általunk használt protokollokat.
+
+Mint látható, a zöld terület a cégünk budapesti telephelye, a rózsaszín az itt megtalálható vezeték nélküli vendég hálózat, a narancssárga egy bérelt adatközpont szerepét tölti be, a kék rész a Magyar Nemzeti Bank adattároló egysége, illetve a sárga terület a cég távolról dolgozó kollegáit reprezentálja.
+
+ A biztonságos és folytonos kapcsolat érdekében második és harmadik rétegbeli hálózati megoldásokat kellett alkalmaznunk: 
+
+A telephelyünk kapcsolóin a feszítőfa protokoll biztosítja a hurkok és szórási viharok elkerülését, a nagyobb sávszélesség érdekében portösszefogást, a biztonság érdekében jelszó titkosíást, dhcp snoopingot, jelszóval titkosított vtp által hirdetett vlanokat és portbiztonságot alkalmazunk.
+
+A redundancia érdekében két külön szolgáltatói internetelérés van biztosítva, amik priotitását a forgalomirányítókon lévő HSRP protokoll szabályoz. 
+
+Minden eszközünk távolról konfigurálható version 2-es sshval.
+
+green: stp, hsrp, etherchannel lacp, port security, dhcp snooping, vlan, jelszó titkosítás, vtp, ssh, gre tunnel ipsec, hitelesített eigrp, 
+
+orange: stp, hsrp, etherchannel pagp, port security, dhcp snooping, vlan, jelszó titkosítás, ssh, ppp chappel, 
+
+
+
+2. Szerverek és szolgáltatások bemutatása, gyorstalpaló arról hogy mi a feladata és miért ezt választottuk, tesztelés cmd commandokkal vagy snippetekkel
+
+windows 2019 szerver - web, file,
+
+Összesen négy szerver üzemelteti a cég infrastruktúráját, és szolgálja ki a dolgozozóit. A fő tartományvezérlőnk egy Linux alapú Debian szerver, ami DHCP segítségével oszt IP címeket, emellett az Active Directory szerepkört is elvégzi, és dinamikus címfordítást is végez. A szerver esetleges meghibásodása során az összes feladatát átveszi a másodlagos tartományvezérlő. Az adatszivárgás elkerülése érdekében saját levelzőrendszert és Virtuális magánhálózatot hoztunk létre, melyet egy másik Debian szerveren futtatunk.
+Ezek mellett egy 2019-es Windows Szerver gondoskodik a cég reszponzív weboldalának tanusítvánnyal ellátott elérhetőségéről, biztonságos távoli fájlmegosztásról, közös és saját mappák kvótázásáról, és hálózati nyomtatómegosztásról.
+
+sdc átvétel - Mint látható, most a fő tartományvezérlő oszt ip címet DHCP segítségével. Most a kapott ip címet elvettük a klienstől, majd leállítottuk a fő tartományvezértlőt, így a tartalék szerver végzi el az ip cím osztást és a további szerepköröket.
+
+file, web - Bejelentkezés után láthatóak az általunk felcsatolt hálózati közös és saját mappák. A közös mappa 1 GB, míg a saját mappa 100MB tárhellyel rendelkezik. Jogosultsági beállítások miatt minden dolgozó csak a saját mappájához férhet hozzá, míg a közöshöz bárki.
+Cégünk saját weboldallal rendelkezik, ami automatikusan átirányít HTTP-ről HTTPS-re. A weboldalon minden fontos információ megtalálható a számlanyitáshoz. A weboldalunk reszponzív, amit jól igazol az, hogy igazodik a képmérethez. Ezen felül cégünk által önaláírt tanusítvánnyal rendelkezik.
+
+vpn - Most pedig felcsatlakozunk a saját VPN szerverünkre. Ezután a tracert paranccsal ellenőrizzük a csomag útját, ami jól mutatja hogy az első ugrásnál a vpn szervertől kapott ip címre ugrunk, ezután a virtuális kijáratunkra, utánna az 
+
+3. dokumentáció és ennek legfontosabb részeinek megemlítése
+
+A teljes konfigurációról készítettünk egy dokumentációt, amiben részletesen ki van fejtve minden.
+
+4. elköszönés csö
